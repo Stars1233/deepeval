@@ -73,21 +73,21 @@ class ContextGenerator:
 
         # Check if chunk_size is valid for document lengths
         if self.doc_to_chunker_map is not None:
-            min_doc_token_count = min(
+            smallest_document_token_count = min(
                 chunker.text_token_count
                 for chunker in self.doc_to_chunker_map.values()
             )
-            max_num_contexts_possible = 1 + math.floor(
-                (min_doc_token_count - self.chunk_size)
+            smallest_document_num_chunks = 1 + math.floor(
+                (smallest_document_token_count - self.chunk_size)
                 / (self.chunk_size - self.chunk_overlap)
             )
-            if max_num_contexts_possible < num_context_per_document:
+            if smallest_document_num_chunks < num_context_per_document:
                 suggested_chunk_size = (
-                    min_doc_token_count
+                    smallest_document_token_count
                     + (self.chunk_overlap * (num_context_per_document - 1))
                 ) // num_context_per_document
                 raise ValueError(
-                    f"Your smallest document is only sized {min_doc_token_count}. "
+                    f"Your smallest document is only sized {smallest_document_token_count} tokens."
                     f"Please adjust the chunk_size to no more than {suggested_chunk_size}."
                 )
 
@@ -141,21 +141,21 @@ class ContextGenerator:
 
         # Check if chunk_size is valid for document lengths
         if self.doc_to_chunker_map is not None:
-            min_doc_token_count = min(
+            smallest_document_token_count = min(
                 chunker.text_token_count
                 for chunker in self.doc_to_chunker_map.values()
             )
-            num_contexts_limit = 1 + math.floor(
-                (min_doc_token_count - self.chunk_size)
+            smallest_document_num_chunks = 1 + math.floor(
+                (smallest_document_token_count - self.chunk_size)
                 / (self.chunk_size - self.chunk_overlap)
             )
-            if num_contexts_limit < num_context_per_document:
+            if smallest_document_num_chunks < num_context_per_document:
                 suggested_chunk_size = (
-                    min_doc_token_count
+                    smallest_document_token_count
                     + (self.chunk_overlap * (num_context_per_document - 1))
                 ) // num_context_per_document
                 raise ValueError(
-                    f"Your smallest document is only sized {min_doc_token_count}."
+                    f"Your smallest document is only sized {smallest_document_token_count} tokens."
                     f"Please adjust the chunk_size to no more than {suggested_chunk_size}."
                 )
 
@@ -280,7 +280,7 @@ class ContextGenerator:
                     1 - similar_chunks["distances"][num_query_docs][j]
                 )
                 if (
-                    similar_chunk_text not in similar_chunk_texts
+                    similar_chunk_text not in context
                     and similar_chunk_similarity > similarity_threshold
                 ):
                     context.append(similar_chunk_text)
@@ -335,7 +335,7 @@ class ContextGenerator:
                     1 - similar_chunks["distances"][num_query_docs][j]
                 )
                 if (
-                    similar_chunk_text not in similar_chunk_texts
+                    similar_chunk_text not in context
                     and similar_chunk_similarity > similarity_threshold
                 ):
                     context.append(similar_chunk_text)
@@ -447,15 +447,8 @@ class ContextGenerator:
     def evaluate_chunk(self, chunk) -> float:
         prompt = FilterTemplate.evaluate_context(chunk)
         if self.using_native_model:
-            res, _ = self.model.generate(prompt)
-            data = trimAndLoadJson(res, self)
-            score = (
-                data["clarity"]
-                + data["depth"]
-                + data["structure"]
-                + data["relevance"]
-            ) / 4
-            return score
+            res, _ = self.model.generate(prompt, schema=ContextScore)
+            return (res.clarity + res.depth + res.structure + res.relevance) / 4
         else:
             try:
                 res: ContextScore = self.model.generate(
@@ -478,15 +471,8 @@ class ContextGenerator:
     async def a_evaluate_chunk(self, chunk) -> float:
         prompt = FilterTemplate.evaluate_context(chunk)
         if self.using_native_model:
-            res, _ = await self.model.a_generate(prompt)
-            data = trimAndLoadJson(res, self)
-            score = (
-                data["clarity"]
-                + data["depth"]
-                + data["structure"]
-                + data["relevance"]
-            ) / 4
-            return score
+            res, _ = await self.model.a_generate(prompt, schema=ContextScore)
+            return (res.clarity + res.depth + res.structure + res.relevance) / 4
         else:
 
             try:
