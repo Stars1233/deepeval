@@ -86,7 +86,7 @@ being composed mostly of rock and metal.
 """
 
 strict_mode = False
-verbose_mode = True
+verbose_mode = False
 
 from pydantic import BaseModel
 

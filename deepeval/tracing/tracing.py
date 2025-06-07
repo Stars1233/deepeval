@@ -140,7 +140,7 @@ class TraceManager:
             status=TraceSpanStatus.IN_PROGRESS,
             start_time=perf_counter(),
             end_time=None,
-            # metadata=None,
+            confident_api_key=self.confident_api_key,
         )
         self.active_traces[trace_uuid] = new_trace
         self.traces.append(new_trace)
@@ -164,6 +164,7 @@ class TraceManager:
                 self.post_trace(trace)
             else:
                 # print(f"Ending trace: {trace.root_spans}")
+                self.environment = Environment.TESTING
                 trace.root_spans = [trace.root_spans[0].children[0]]
                 for root_span in trace.root_spans:
                     root_span.parent_uuid = None
@@ -289,7 +290,7 @@ class TraceManager:
             self._worker_thread.start()
 
     def post_trace_api(self, trace_api: TraceApi) -> Optional[str]:
-        if not is_confident():
+        if not is_confident() and self.confident_api_key is None:
             self._print_trace_status(
                 message="No Confident AI API key found. Skipping trace posting.",
                 trace_worker_status=TraceWorkerStatus.FAILURE,
@@ -305,7 +306,7 @@ class TraceManager:
         return "ok"
 
     def post_trace(self, trace: Trace) -> Optional[str]:
-        if not is_confident():
+        if not is_confident() and self.confident_api_key is None:
             self._print_trace_status(
                 message="No Confident AI API key found. Skipping trace posting.",
                 trace_worker_status=TraceWorkerStatus.FAILURE,

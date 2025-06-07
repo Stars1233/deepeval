@@ -63,6 +63,7 @@ class Endpoints(Enum):
     GUARD_ENDPOINT = "/guard"
     GUARDRAILS_ENDPOINT = "/guardrails"
     BASELINE_ATTACKS_ENDPOINT = "/generate-baseline-attacks"
+    THREAD_METRICS_ENDPOINT = "/v1/thread-metrics"
 
 
 class Api:
