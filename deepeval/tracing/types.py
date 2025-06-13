@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Union
 from rich.progress import Progress
 
+from deepeval.feedback import Feedback
 from deepeval.tracing.attributes import (
     AgentAttributes,
     LlmAttributes,
@@ -47,6 +48,7 @@ class BaseSpan(BaseModel):
     error: Optional[str] = None
     llm_test_case: Optional[LLMTestCase] = None
     metrics: Optional[Union[List[str], List[BaseMetric]]] = None
+    feedback: Optional[Feedback] = None
 
     # Don't serialize these
     progress: Optional[Progress] = Field(None, exclude=True)
@@ -109,3 +111,7 @@ class Trace(BaseModel):
     user_id: Optional[str] = None
     input: Optional[Any] = None
     output: Optional[Any] = None
+    feedback: Optional[Feedback] = None
+
+    # Don't serialize these
+    confident_api_key: Optional[str] = Field(None, exclude=True)

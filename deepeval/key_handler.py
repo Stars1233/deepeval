@@ -10,6 +10,9 @@ class KeyValues(Enum):
     # Confident AI
     API_KEY = "api_key"
     CONFIDENT_REGION = "confident_region"
+    # Cache
+    LAST_TEST_RUN_LINK = "last_test_run_link"
+    LAST_TEST_RUN_DATA = "last_test_run_data"
     # Azure Open AI
     AZURE_OPENAI_API_KEY = "AZURE_OPENAI_API_KEY"
     AZURE_OPENAI_ENDPOINT = "AZURE_OPENAI_ENDPOINT"
@@ -37,6 +40,11 @@ class KeyValues(Enum):
     GOOGLE_GENAI_USE_VERTEXAI = "GOOGLE_GENAI_USE_VERTEXAI"
     GOOGLE_CLOUD_PROJECT = "GOOGLE_CLOUD_PROJECT"
     GOOGLE_CLOUD_LOCATION = "GOOGLE_CLOUD_LOCATION"
+    # LiteLLM
+    USE_LITELLM = "USE_LITELLM"
+    LITELLM_MODEL_NAME = "LITELLM_MODEL_NAME"
+    LITELLM_API_KEY = "LITELLM_API_KEY"
+    LITELLM_API_BASE = "LITELLM_API_BASE"
 
 
 class KeyFileHandler:

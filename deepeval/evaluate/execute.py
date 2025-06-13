@@ -75,9 +75,13 @@ from deepeval.utils import add_pbar, update_pbar, custom_console
 
 
 def execute_test_cases(
-    test_cases: List[Union[LLMTestCase, ConversationalTestCase, MLLMTestCase]],
-    metrics: List[
-        Union[BaseMetric, BaseConversationalMetric, BaseMultimodalMetric]
+    test_cases: Union[
+        List[LLMTestCase], List[ConversationalTestCase], List[MLLMTestCase]
+    ],
+    metrics: Union[
+        List[BaseMetric],
+        List[BaseConversationalMetric],
+        List[BaseMultimodalMetric],
     ],
     skip_on_missing_params: bool,
     ignore_errors: bool,
@@ -374,7 +378,7 @@ def execute_test_cases(
     if show_indicator and _use_bar_indicator:
         progress = Progress(
             TextColumn("{task.description}"),
-            BarColumn(),
+            BarColumn(bar_width=60),
             TaskProgressColumn(),
             TimeElapsedColumn(),
             console=custom_console,
@@ -393,9 +397,13 @@ def execute_test_cases(
 
 
 async def a_execute_test_cases(
-    test_cases: List[Union[LLMTestCase, ConversationalTestCase, MLLMTestCase]],
-    metrics: List[
-        Union[BaseMetric, BaseConversationalMetric, BaseMultimodalMetric]
+    test_cases: Union[
+        List[LLMTestCase], List[ConversationalTestCase], List[MLLMTestCase]
+    ],
+    metrics: Union[
+        List[BaseMetric],
+        List[BaseConversationalMetric],
+        List[BaseMultimodalMetric],
     ],
     ignore_errors: bool,
     skip_on_missing_params: bool,
@@ -447,7 +455,7 @@ async def a_execute_test_cases(
     if show_indicator and _use_bar_indicator:
         progress = Progress(
             TextColumn("{task.description}"),
-            BarColumn(),
+            BarColumn(bar_width=60),
             TaskProgressColumn(),
             TimeElapsedColumn(),
             console=custom_console,
@@ -864,7 +872,7 @@ def execute_agentic_test_cases(
                 )
                 pbar_tags_id = add_pbar(
                     progress,
-                    f"     ⚡ Invoking observed callback (golden #{count})",
+                    f"     ⚡ Invoking observed callback (#{count})",
                     total=total_tags,
                 )
 
@@ -879,7 +887,7 @@ def execute_agentic_test_cases(
                         loop.run_until_complete(observed_callback(golden.input))
                     else:
                         observed_callback(golden.input)
-                    current_trace: Trace = get_current_trace()
+                    current_trace: Trace = current_trace_context.get()
 
                 update_pbar(progress, pbar_tags_id, advance=total_tags)
                 update_pbar(progress, pbar_id)
@@ -1015,7 +1023,7 @@ def execute_agentic_test_cases(
 
                 pbar_eval_id = add_pbar(
                     progress,
-                    f"     🎯 Evaluating span metrics (golden #{count})",
+                    f"     🎯 Evaluating component(s) (#{count})",
                     total=count_metrics_in_trace(trace=current_trace),
                 )
 
@@ -1029,13 +1037,12 @@ def execute_agentic_test_cases(
                 test_run_manager.update_test_run(api_test_case, test_case)
                 test_results.append(create_test_result(api_test_case))
 
-                update_pbar(progress, pbar_eval_id)
                 update_pbar(progress, pbar_id)
 
     if show_indicator and _use_bar_indicator:
         progress = Progress(
             TextColumn("{task.description}"),
-            BarColumn(),
+            BarColumn(bar_width=60),
             TaskProgressColumn(),
             TimeElapsedColumn(),
             console=custom_console,
@@ -1043,7 +1050,7 @@ def execute_agentic_test_cases(
         with progress:
             pbar_id = add_pbar(
                 progress,
-                f"Evaluating {len(goldens)} goldens(s) sequentially",
+                f"Running Component-Level Evals (sync)",
                 total=len(goldens) * 2,
             )
             evaluate_test_cases(progress=progress, pbar_id=pbar_id)
@@ -1079,7 +1086,6 @@ async def a_execute_agentic_test_cases(
     test_run_manager = global_test_run_manager
     test_run_manager.save_to_disk = save_to_disk
     test_run_manager.get_test_run(identifier=identifier)
-
     local_trace_manager = trace_manager
     local_trace_manager.evaluating = True
     test_results: List[TestResult] = []
@@ -1089,14 +1095,16 @@ async def a_execute_agentic_test_cases(
     if show_indicator and _use_bar_indicator:
         progress = Progress(
             TextColumn("{task.description}"),
-            BarColumn(),
+            BarColumn(bar_width=60),
             TaskProgressColumn(),
             TimeElapsedColumn(),
             console=custom_console,
         )
         with progress:
             pbar_id = add_pbar(
-                progress, "Overall: Evaluating goldens", total=len(goldens) * 2
+                progress,
+                "Running Component-Level Evals (async)",
+                total=len(goldens) * 2,
             )
             for golden in goldens:
                 with capture_evaluation_run("golden"):
@@ -1166,7 +1174,7 @@ async def a_execute_agentic_test_case(
     total_tags = count_observe_decorators_in_module(observed_callback)
     pbar_tags_id = add_pbar(
         progress,
-        f"     ⚡ Invoking observed callback (golden #{count})",
+        f"     ⚡ Invoking observed callback (#{count})",
         total=total_tags,
     )
 
@@ -1212,7 +1220,7 @@ async def a_execute_agentic_test_case(
 
     pbar_eval_id = add_pbar(
         progress,
-        f"     🎯 Evaluating span metrics (golden #{count})",
+        f"     🎯 Evaluating component(s) (#{count})",
         total=count_metrics_in_trace(trace=current_trace),
     )
 
@@ -1262,7 +1270,6 @@ async def a_execute_agentic_test_case(
     test_run_manager.update_test_run(api_test_case, test_case)
     test_results.append(create_test_result(api_test_case))
 
-    update_pbar(progress, pbar_eval_id)
     update_pbar(progress, pbar_id)
 
 

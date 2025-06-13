@@ -19,7 +19,7 @@ from deepeval.dataset import Golden
 from deepeval.prompt import Prompt
 from deepeval.test_case.utils import check_valid_test_cases_type
 from deepeval.test_run.hyperparameters import process_hyperparameters
-from deepeval.test_run.test_run import TestRunResultDisplay
+from deepeval.test_run.test_run import TEMP_FILE_PATH
 from deepeval.utils import (
     get_or_create_event_loop,
     should_ignore_errors,
@@ -205,6 +205,7 @@ def evaluate(
     )
     if goldens and observed_callback:
         global_test_run_manager.reset()
+        # global_test_run_manager.save_to_disk = True
         start_time = time.perf_counter()
         with capture_evaluation_run("traceable evaluate()"):
             if async_config.run_async:
@@ -220,6 +221,7 @@ def evaluate(
                         throttle_value=async_config.throttle_value,
                         identifier=identifier,
                         max_concurrent=async_config.max_concurrent,
+                        save_to_disk=cache_config.write_cache,
                     )
                 )
             else:
@@ -231,6 +233,7 @@ def evaluate(
                     show_indicator=display_config.show_indicator,
                     skip_on_missing_params=error_config.skip_on_missing_params,
                     identifier=identifier,
+                    save_to_disk=cache_config.write_cache,
                 )
         end_time = time.perf_counter()
         run_duration = end_time - start_time
@@ -315,7 +318,7 @@ def evaluate(
 
         test_run = global_test_run_manager.get_test_run()
         test_run.hyperparameters = process_hyperparameters(hyperparameters)
-        global_test_run_manager.save_test_run()
+        global_test_run_manager.save_test_run(TEMP_FILE_PATH)
         confident_link = global_test_run_manager.wrap_up_test_run(
             run_duration, display_table=False
         )

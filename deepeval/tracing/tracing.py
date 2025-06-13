@@ -56,6 +56,7 @@ from deepeval.tracing.utils import (
     validate_environment,
     validate_sampling_rate,
 )
+from deepeval.feedback.utils import convert_feedback_to_api_feedback
 from deepeval.utils import dataclass_to_dict, is_confident
 from deepeval.tracing.context import current_span_context, current_trace_context
 
@@ -89,6 +90,7 @@ class TraceManager:
 
         self.sampling_rate = os.environ.get(CONFIDENT_SAMPLE_RATE, 1)
         validate_sampling_rate(self.sampling_rate)
+        self.openai_client = None
 
         # Register an exit handler to warn about unprocessed traces
         atexit.register(self._warn_on_exit)
@@ -99,7 +101,7 @@ class TraceManager:
         remaining_tasks = queue_size + in_flight
         if os.getenv(CONFIDENT_TRACE_FLUSH) != "YES" and remaining_tasks > 0:
             self._print_trace_status(
-                message=f"WARNING: Exiting with {queue_size + in_flight} trace(s) remaining to be posted.",
+                message=f"WARNING: Exiting with {queue_size + in_flight} abaonded trace(s).",
                 trace_worker_status=TraceWorkerStatus.WARNING,
                 description=f"Set {CONFIDENT_TRACE_FLUSH}=YES as an environment variable to flush remaining traces to Confident AI.",
             )
@@ -129,6 +131,7 @@ class TraceManager:
         if confident_api_key is not None:
             self.confident_api_key = confident_api_key
         if openai_client is not None:
+            self.openai_client = openai_client
             patch_openai_client(openai_client)
 
     def start_new_trace(self) -> Trace:
@@ -140,7 +143,7 @@ class TraceManager:
             status=TraceSpanStatus.IN_PROGRESS,
             start_time=perf_counter(),
             end_time=None,
-            # metadata=None,
+            confident_api_key=self.confident_api_key,
         )
         self.active_traces[trace_uuid] = new_trace
         self.traces.append(new_trace)
@@ -164,6 +167,7 @@ class TraceManager:
                 self.post_trace(trace)
             else:
                 # print(f"Ending trace: {trace.root_spans}")
+                self.environment = Environment.TESTING
                 trace.root_spans = [trace.root_spans[0].children[0]]
                 for root_span in trace.root_spans:
                     root_span.parent_uuid = None
@@ -289,7 +293,7 @@ class TraceManager:
             self._worker_thread.start()
 
     def post_trace_api(self, trace_api: TraceApi) -> Optional[str]:
-        if not is_confident():
+        if not is_confident() and self.confident_api_key is None:
             self._print_trace_status(
                 message="No Confident AI API key found. Skipping trace posting.",
                 trace_worker_status=TraceWorkerStatus.FAILURE,
@@ -305,7 +309,7 @@ class TraceManager:
         return "ok"
 
     def post_trace(self, trace: Trace) -> Optional[str]:
-        if not is_confident():
+        if not is_confident() and self.confident_api_key is None:
             self._print_trace_status(
                 message="No Confident AI API key found. Skipping trace posting.",
                 trace_worker_status=TraceWorkerStatus.FAILURE,
@@ -526,6 +530,9 @@ class TraceManager:
             userId=trace.user_id,
             input=trace.input,
             output=trace.output,
+            feedback=convert_feedback_to_api_feedback(
+                trace.feedback, trace_uuid=trace.uuid
+            ),
         )
 
     def _convert_span_to_api_span(self, span: BaseSpan) -> BaseApiSpan:
@@ -608,6 +615,9 @@ class TraceManager:
             metrics=(
                 span.metrics if is_metric_strings else None
             ),  # only need metric name if online evals
+            feedback=convert_feedback_to_api_feedback(
+                span.feedback, span_uuid=span.uuid
+            ),
         )
 
         # Add type-specific attributes
@@ -647,7 +657,6 @@ class Observer:
         ],
         func_name: str,
         metrics: Optional[Union[List[str], List[BaseMetric]]] = None,
-        client: Optional[Any] = None,
         _progress: Optional[Progress] = None,
         _pbar_callback_id: Optional[int] = None,
         **kwargs,
@@ -672,7 +681,6 @@ class Observer:
         self.span_type: SpanType | str = (
             self.name if span_type is None else span_type
         )
-        self.client = client
         self._progress = _progress
         self._pbar_callback_id = _pbar_callback_id
 
@@ -808,9 +816,10 @@ class Observer:
             )
         elif self.span_type == SpanType.LLM.value:
             model = self.observe_kwargs.get("model", None)
-            if model is None and self.client is None:
-                raise ValueError("model or client is required for LlmSpan")
-
+            if model is None and not trace_manager.openai_client:
+                raise ValueError(
+                    "Either provide a model in observe or configure an openai_client in trace_manager. For more information on openai_client, see https://documentation.confident-ai.com/llm-tracing/integrations/openai"
+                )
             return LlmSpan(**span_kwargs, attributes=None, model=model)
         elif self.span_type == SpanType.RETRIEVER.value:
             embedder = self.observe_kwargs.get("embedder", None)
@@ -897,7 +906,6 @@ def observe(
     type: Optional[
         Union[Literal["agent", "llm", "retriever", "tool"], str]
     ] = None,
-    client: Optional[Any] = None,
     **observe_kwargs,
 ):
     """
@@ -933,7 +941,6 @@ def observe(
                     type,
                     metrics=metrics,
                     func_name=func_name,
-                    client=client,
                     **observer_kwargs,
                 ) as observer:
                     # Call the original function
@@ -962,7 +969,6 @@ def observe(
                     type,
                     metrics=metrics,
                     func_name=func_name,
-                    client=client,
                     **observer_kwargs,
                 ) as observer:
                     # Call the original function

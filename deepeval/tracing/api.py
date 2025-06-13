@@ -2,7 +2,11 @@ from enum import Enum
 from typing import Dict, List, Optional, Union, Literal, Any
 from pydantic import BaseModel, Field
 
+from deepeval.confident.api import Api, Endpoints, HttpMethods
 from deepeval.test_case.llm_test_case import ToolCall
+from deepeval.tracing.context import current_trace_context
+from deepeval.utils import is_confident
+from deepeval.feedback.api import APIFeedback
 
 
 class SpanApiType(Enum):
@@ -90,6 +94,9 @@ class BaseApiSpan(BaseModel):
     metrics: Optional[List[str]] = Field(None, alias="metrics")
     metrics_data: Optional[List[MetricData]] = Field(None, alias="metricsData")
 
+    ## human feedback
+    feedback: Optional[APIFeedback] = Field(None)
+
     class Config:
         use_enum_values = True
         validate_assignment = True
@@ -111,3 +118,36 @@ class TraceApi(BaseModel):
     user_id: Optional[str] = Field(None, alias="userId")
     input: Optional[Any] = Field(None)
     output: Optional[Any] = Field(None)
+    feedback: Optional[APIFeedback] = Field(None)
+
+
+class RunThreadMetricApi(BaseModel):
+    thread_id: str = Field(alias="threadId")
+    metric_collection: str = Field(alias="metricCollection")
+
+
+def evaluate_thread(thread_id: str, metric_collection: str):
+    trace = current_trace_context.get()
+    api_key = trace.confident_api_key
+    if not api_key and not is_confident():
+        return
+
+    run_thread_metric_api = RunThreadMetricApi(
+        threadId=thread_id,
+        metricCollection=metric_collection,
+    )
+    try:
+        body = run_thread_metric_api.model_dump(
+            by_alias=True,
+            exclude_none=True,
+        )
+    except AttributeError:
+        # Pydantic version below 2.0
+        body = run_thread_metric_api.dict(by_alias=True, exclude_none=True)
+
+    api = Api(api_key=api_key)
+    api.send_request(
+        method=HttpMethods.POST,
+        endpoint=Endpoints.THREAD_METRICS_ENDPOINT,
+        body=body,
+    )

@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 from rich import print
 import webbrowser
@@ -9,13 +10,15 @@ import typer
 from enum import Enum
 from deepeval.key_handler import KEY_FILE_HANDLER, KeyValues
 from deepeval.cli.recommend import app as recommend_app
-from deepeval.telemetry import capture_login_event
+from deepeval.telemetry import capture_login_event, capture_view_event
 from deepeval.cli.test import app as test_app
 from deepeval.cli.server import start_server
-
-
-PROD = "https://app.confident-ai.com"
-LOCAL = "http://localhost:3000"
+from deepeval.utils import delete_file_if_exists, is_confident
+from deepeval.test_run.test_run import (
+    LATEST_TEST_RUN_FILE_PATH,
+    global_test_run_manager,
+)
+from deepeval.cli.utils import render_login_message, upload_and_open_link, PROD
 
 app = typer.Typer(name="deepeval")
 app.add_typer(test_app, name="test")
@@ -85,8 +88,7 @@ def login(
             if confident_api_key:
                 api_key = confident_api_key
             else:
-                """Login to the DeepEval platform."""
-                print("Welcome to :sparkles:[bold]DeepEval[/bold]:sparkles:!")
+                render_login_message()
 
                 # Start the pairing server
                 port = find_available_port()
@@ -100,23 +102,22 @@ def login(
 
                 # Open web url
                 login_url = f"{PROD}/pair?code={pairing_code}&port={port}"
-                print(
-                    f"Login and grab your API key here: [link={login_url}]{login_url}[/link] "
-                )
                 webbrowser.open(login_url)
-
+                print(
+                    f"(open this link if your browser did not opend: [link={PROD}]{PROD}[/link])"
+                )
                 if api_key == "":
                     while True:
-                        api_key = input("Paste your API Key: ").strip()
+                        api_key = input(f"🔐 Enter your API Key: ").strip()
                         if api_key:
                             break
                         else:
                             print(
-                                "API Key cannot be empty. Please try again.\n"
+                                "❌ API Key cannot be empty. Please try again.\n"
                             )
 
             KEY_FILE_HANDLER.write_key(KeyValues.API_KEY, api_key)
-            span.set_attribute("completed", False)
+            span.set_attribute("completed", True)
 
             print(
                 "\n🎉🥳 Congratulations! You've successfully logged in! :raising_hands: "
@@ -126,6 +127,34 @@ def login(
             )
         except:
             span.set_attribute("completed", False)
+
+
+@app.command()
+def logout():
+    KEY_FILE_HANDLER.remove_key(KeyValues.API_KEY)
+    delete_file_if_exists(LATEST_TEST_RUN_FILE_PATH)
+    print("\n🎉🥳 You've successfully logged out! :raising_hands: ")
+
+
+@app.command()
+def view():
+    with capture_view_event() as span:
+        if is_confident():
+            last_test_run_link = (
+                global_test_run_manager.get_latest_test_run_link()
+            )
+            if last_test_run_link:
+                print(f"🔗 View test run: {last_test_run_link}")
+                webbrowser.open(last_test_run_link)
+            else:
+                upload_and_open_link(_span=span)
+        else:
+            upload_and_open_link(_span=span)
+
+
+@app.command(name="enable-grpc-logging")
+def enable_grpc_logging():
+    os.environ["DEEPEVAL_GRPC_LOGGING"] = "YES"
 
 
 @app.command(name="set-azure-openai")
@@ -440,6 +469,43 @@ def unset_gemini_model_env():
 
     print(
         ":raised_hands: Gemini model has been unset. You're now using regular OpenAI for all evals that require an LLM."
+    )
+
+
+@app.command(name="set-litellm")
+def set_litellm_model_env(
+    model_name: str = typer.Argument(..., help="Name of the LiteLLM model"),
+    api_key: Optional[str] = typer.Option(
+        None, "--api-key", help="API key for the model (if required)"
+    ),
+    api_base: Optional[str] = typer.Option(
+        None, "--api-base", help="Base URL for the model API (if required)"
+    ),
+):
+    """Set up a LiteLLM model for evaluation."""
+    KEY_FILE_HANDLER.write_key(KeyValues.LITELLM_MODEL_NAME, model_name)
+    if api_key:
+        KEY_FILE_HANDLER.write_key(KeyValues.LITELLM_API_KEY, api_key)
+    if api_base:
+        KEY_FILE_HANDLER.write_key(KeyValues.LITELLM_API_BASE, api_base)
+    KEY_FILE_HANDLER.write_key(KeyValues.USE_LITELLM, "YES")
+    KEY_FILE_HANDLER.write_key(KeyValues.USE_AZURE_OPENAI, "NO")
+    KEY_FILE_HANDLER.write_key(KeyValues.USE_LOCAL_MODEL, "NO")
+    KEY_FILE_HANDLER.write_key(KeyValues.USE_GEMINI_MODEL, "NO")
+    print(
+        ":raising_hands: Congratulations! You're now using a LiteLLM model for all evals that require an LLM."
+    )
+
+
+@app.command(name="unset-litellm")
+def unset_litellm_model_env():
+    """Remove LiteLLM model configuration."""
+    KEY_FILE_HANDLER.remove_key(KeyValues.LITELLM_MODEL_NAME)
+    KEY_FILE_HANDLER.remove_key(KeyValues.LITELLM_API_KEY)
+    KEY_FILE_HANDLER.remove_key(KeyValues.LITELLM_API_BASE)
+    KEY_FILE_HANDLER.remove_key(KeyValues.USE_LITELLM)
+    print(
+        ":raising_hands: Congratulations! You're now using regular OpenAI for all evals that require an LLM."
     )
 
 
